@@ -44,12 +44,6 @@ fi
 
 clear
 
-if [ "${ARCH}" == "arm64" ]; then
-  whiptail --backtitle "${INSTALLER_TITLE}" --title " TerrariumPI Installer " --msgbox "TerrariumPI is not 64 bit compatible." 0 60
-
-  exit 0
-fi
-
 CLEANUP_PACKAGES="wolfram sonic-pi openbox nodered chromium-browser desktop-base gnome-desktop3-data libgnome-desktop epiphany-browser-data epiphany-browser nuscratch scratch wiringpi libreoffice"
 PYTHON_LIBS="python3-pip python3-dev python3-venv"
 
