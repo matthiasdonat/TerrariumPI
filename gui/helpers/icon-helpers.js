@@ -57,6 +57,9 @@ export const template_sensor_type_icon = (type) => {
     case 'temperature':
       return 'fas fa-thermometer-half';
 
+    case 'water_flow':
+      return 'fas fa-snowflake';
+
     case 'heating':
       return 'fas fa-fire';
 

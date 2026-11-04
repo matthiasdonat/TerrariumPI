@@ -1378,6 +1378,7 @@
       "moisture": "Durchschnittliche Feuchtigkeit",
       "pressure": "Durchschnittlicher Luftdruck",
       "temperature": "Durchschnittstemperatur",
+      "water_flow": "Durchschnittlicher Wasserfluss",
       "uva": "Durchschnittliche UVA",
       "uvb": "Durchschnittliches UVB",
       "uvc": "Durchschnittliches UVC",
@@ -1573,6 +1574,12 @@
         "title": "Temperatur"
       },
       "title": "Temperatursensoren"
+    },
+    "water_flow": {
+      "menu": {
+        "title": "Wasserdurchfluss"
+      },
+      "title": "Wasserdurchflusssensoren"
     },
     "title": "Sensoren",
     "uva": {
