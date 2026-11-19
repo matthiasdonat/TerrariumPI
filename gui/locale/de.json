@@ -46,7 +46,8 @@
           "sensors": "Sensoren",
           "timer": "Timer",
           "weather": "Wetter Tag/Nacht",
-          "weather_inverse": "Wetter Nacht/Tag"
+          "weather_inverse": "Wetter Nacht/Tag",
+          "schedule": "Schedule 24h"
         },
         "placeholder": "Wähle den Modus"
       },
@@ -140,6 +141,15 @@
           "one": {
             "label": "Mindestens eine an"
           }
+        },
+        "schedule": {
+          "header": "Schedule (24h)",
+          "start": "Start",
+          "end": "End",
+          "level": "Dimmer level",
+          "add": "Add block",
+          "remove": "Remove",
+          "end.readonly": "Auto"
         },
         "deviation_high_alarm": {
           "help": "Erhöhen oder verringern Sie den hohen Alarmwert.",

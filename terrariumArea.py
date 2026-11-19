@@ -1144,6 +1144,10 @@ class terrariumAreaLights(terrariumArea):
             if period not in self.setup:
                 continue
 
+            if self.mode == "schedule":
+                # In schedule mode the relays follow the schedule blocks directly. Nothing to continue.
+                continue
+
             if self.state[period]["powered"]:
                 max_states = []
                 if self._is_timer_time(period):
@@ -1159,8 +1163,164 @@ class terrariumAreaLights(terrariumArea):
 
         self.state["powered"] = self._powered
 
+    # Schedule mode: a list of blocks for the 'day' relays. Every block has a start time (HH:MM) and a dimmer level (0-100%).
+    # A block runs until the start of the next block. The last block runs until the first block of the next day.
+    @staticmethod
+    def _schedule_minutes(value) -> int:
+        hours, minutes = str(value).split(":")[:2]
+        return int(hours) * 60 + int(minutes)
+
+    def _load_schedule_blocks(self) -> list:
+        if "day" not in self.setup:
+            return []
+
+        raw_blocks = self.setup["day"].get("blocks") or []
+        if isinstance(raw_blocks, dict):
+            raw_blocks = list(raw_blocks.values())
+
+        blocks = []
+        for block in raw_blocks:
+            try:
+                start = datetime.time.fromisoformat(str(block.get("start", "")).strip()[:5])
+                level = float(block.get("dimmer_level", 0))
+            except Exception as ex:
+                logger.warning(f"Ignoring invalid schedule block {block} for area {self}: {ex}")
+                continue
+
+            blocks.append({"start": start.strftime("%H:%M"), "dimmer_level": max(0.0, min(100.0, level))})
+
+        blocks.sort(key=lambda item: item["start"])
+        self.setup["day"]["blocks"] = blocks
+        return blocks
+
+    def _schedule_level(self, now=None):
+        blocks = self.setup.get("day", {}).get("blocks", [])
+        if len(blocks) == 0:
+            return None
+
+        now = now or datetime.datetime.now()
+        now_minutes = now.hour * 60 + now.minute
+
+        # Before the first block of today, the last block of yesterday is still active
+        level = blocks[-1]["dimmer_level"]
+        for block in blocks:
+            if self._schedule_minutes(block["start"]) > now_minutes:
+                break
+
+            level = block["dimmer_level"]
+
+        return level
+
+    def _time_table(self) -> bool:
+        if self.mode != "schedule":
+            return super()._time_table()
+
+        blocks = self._load_schedule_blocks()
+        if "day" not in self.setup:
+            return True
+
+        now = datetime.datetime.now()
+        midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        # Build the periods where the lights are on (dimmer level above 0)
+        periods = []
+        for index, block in enumerate(blocks):
+            if block["dimmer_level"] <= 0:
+                continue
+
+            begin = midnight + datetime.timedelta(minutes=self._schedule_minutes(block["start"]))
+            if index + 1 < len(blocks):
+                end = midnight + datetime.timedelta(minutes=self._schedule_minutes(blocks[index + 1]["start"]))
+            else:
+                end = midnight + datetime.timedelta(days=1, minutes=self._schedule_minutes(blocks[0]["start"]))
+                # The last block of yesterday also covers the start of today
+                periods.append(
+                    (
+                        int((begin - datetime.timedelta(days=1)).timestamp()),
+                        int((end - datetime.timedelta(days=1)).timestamp()),
+                    )
+                )
+
+            periods.append((int(begin.timestamp()), int(end.timestamp())))
+
+        # Merge periods that follow each other
+        timetable = []
+        for period in sorted(periods):
+            if len(timetable) > 0 and period[0] <= timetable[-1][1]:
+                timetable[-1] = (timetable[-1][0], max(timetable[-1][1], period[1]))
+            else:
+                timetable.append(period)
+
+        self.setup["day"]["timetable"] = timetable
+
+        # Show the current or upcoming on period
+        current = next((period for period in timetable if period[1] > int(now.timestamp())), None)
+        if current is None and len(timetable) > 0:
+            current = timetable[-1]
+
+        self.state["day"]["begin"] = current[0] if current else int(midnight.timestamp())
+        self.state["day"]["end"] = current[1] if current else int(midnight.timestamp())
+        self.state["day"]["duration"] = (current[1] - current[0]) if current else 0
+
+        return True
+
+    def _apply_schedule_level(self, level) -> None:
+        with orm.db_session():
+            relays = orm.select(r.id for r in Relay if r.id in self.setup["day"]["relays"] and not r.manual_mode)[:]
+
+        for relay_id in relays:
+            if relay_id not in self.enclosure.relays:
+                continue
+
+            relay = self.enclosure.relays[relay_id]
+            target = level if relay.is_dimmer else (relay.ON if level > 0 else relay.OFF)
+            if relay.state == target:
+                continue
+
+            if relay.on(target):
+                logger.info(
+                    f'Schedule for area {self} changed {relay.type} {relay.name} to {target}{"%" if relay.is_dimmer else ""}.'
+                )
+
+    def _update_schedule(self, read_only: bool = False) -> None:
+        start = time.time()
+        self.state["is_day"] = self.is_day
+
+        # Rebuild the time table every round, so it always matches the current day
+        self._time_table()
+        level = self._schedule_level()
+
+        for period in self.PERIODS:
+            if period not in self.setup:
+                continue
+
+            if "day" == period:
+                if not read_only and level is not None:
+                    self._apply_schedule_level(level)
+
+                # Dimmers below 100% are also 'on'
+                relays = [
+                    self.enclosure.relays[relay]
+                    for relay in self.setup[period]["relays"]
+                    if relay in self.enclosure.relays
+                ]
+                self.state[period]["powered"] = len(relays) > 0 and any(not relay.is_off() for relay in relays)
+            else:
+                # The night relays are not part of the schedule
+                self.state[period]["powered"] = self.relays_state(period)
+
+        self.state["powered"] = self._powered
+        self.state["last_update"] = int(datetime.datetime.now().timestamp())
+
+        logger.info(
+            f"Updated area {self} in 'schedule' mode at enclosure {self.enclosure.name} with level {level} in {time.time()-start:.2f} seconds."
+        )
+
     def update(self, read_only: bool = False):
-        super().update(read_only)
+        if self.mode == "schedule":
+            self._update_schedule(read_only)
+        else:
+            super().update(read_only)
 
         if read_only or self.mode == "disabled":
             return self.state

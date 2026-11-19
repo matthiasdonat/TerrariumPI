@@ -189,6 +189,32 @@
     }
   };
 
+  // Schedule mode: read the current block values from the form, so typed values are not lost on add/remove
+  const scheduleBlocksFromForm = () => {
+    const blocks = formToJSON(editForm).setup?.low?.blocks ?? [];
+    return (Array.isArray(blocks) ? blocks : Object.values(blocks)).filter((item) => item);
+  };
+
+  const addScheduleBlock = () => {
+    const blocks = scheduleBlocksFromForm();
+    $formData.setup.low.blocks = [...blocks, { start: blocks.length === 0 ? '06:00' : '', dimmer_level: 0 }];
+  };
+
+  const removeScheduleBlock = (index) => {
+    const blocks = scheduleBlocksFromForm();
+    blocks.splice(index, 1);
+    $formData.setup.low.blocks = blocks;
+  };
+
+  const scheduleBlockEnd = (blocks, index) => {
+    const sorted = [...blocks].filter((item) => item.start).sort((a, b) => a.start.localeCompare(b.start));
+    const position = sorted.indexOf(blocks[index]);
+    if (position === -1 || sorted.length === 0) {
+      return '';
+    }
+    return sorted[(position + 1) % sorted.length].start;
+  };
+
   const _processForm = async (values, context) => {
     validated = true;
 
@@ -212,6 +238,13 @@
 
       if (formOk) {
         loading = true;
+
+        if (values.type === 'lights' && values.setup.low.blocks) {
+          // Schedule blocks: convert to a sorted list. Only used in schedule mode, but kept for other modes
+          values.setup.low.blocks = Object.values(values.setup.low.blocks)
+            .filter((item) => item && item.start)
+            .sort((a, b) => a.start.localeCompare(b.start));
+        }
 
         if (values.type === 'lights' || values.type === 'audio') {
           values.setup.day = { ...values.setup.low };
@@ -532,6 +565,11 @@
               value: 'weather_inverse',
               text: $_('areas.settings.mode.options.weather_inverse', { default: 'Weather night/day' }),
               disabled: weather === null || weather.location === undefined,
+            },
+            {
+              value: 'schedule',
+              text: $_('areas.settings.mode.options.schedule', { default: 'Schedule 24h' }),
+              disabled: $formData.type !== 'lights',
             },
           ]}"
           label="{$_('areas.settings.mode.label', { default: 'Mode' })}"
@@ -1136,6 +1174,89 @@
               {/if}
             </div>
 
+            <div class="row">
+                {#if $formData.type === 'lights' && $formData.mode === 'schedule'}
+                <div class="col-12">
+                  <div class="card">
+                    <div class="card-header">
+                      <h5 class="mb-0">
+                        {$_('areas.settings.setup.schedule.header', { default: 'Schedule (24h)' })}
+                      </h5>
+                    </div>
+                    <div class="card-body">
+                      <table class="table table-sm">
+                        <thead>
+                          <tr>
+                            <th>{$_('areas.settings.setup.schedule.start', { default: 'Start' })}</th>
+                            <th>{$_('areas.settings.setup.schedule.end', { default: 'End' })}</th>
+                            <th>{$_('areas.settings.setup.schedule.level', { default: 'Dimmer level' })}</th>
+                            <th></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {#each $formData.setup.low?.blocks ?? [] as block, index}
+                            <tr>
+                              <td>
+                                <input
+                                  type="time"
+                                  class="form-control form-control-sm"
+                                  name={`setup.low.blocks.${index}.start`}
+                                  on:change={() => ($formData.setup.low.blocks = scheduleBlocksFromForm())}
+                                  value={block.start}
+                                  required
+                                />
+                              </td>
+                              <td>
+                                <!-- End time has no name: it is the start of the next block and is not saved -->
+                                <input
+                                  type="time"
+                                  class="form-control form-control-sm"
+                                  value={scheduleBlockEnd($formData.setup.low.blocks, index)}
+                                  title={$_('areas.settings.setup.schedule.end.readonly', { default: 'Auto' })}
+                                  readonly
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="number"
+                                  class="form-control form-control-sm"
+                                  name={`setup.low.blocks.${index}.dimmer_level`}
+                                  value={block.dimmer_level}
+                                  min="0"
+                                  max="100"
+                                  step="1"
+                                  required
+                                />
+                              </td>
+                              <td>
+                                <button
+                                  type="button"
+                                  class="btn btn-sm btn-outline-danger"
+                                  on:click={() => removeScheduleBlock(index)}
+                                >
+                                  {$_('areas.settings.setup.schedule.remove', { default: 'Remove' })}
+                                </button>
+                              </td>
+                            </tr>
+                          {/each}
+                            <tr>
+                              <td colspan="4">
+                                <button
+                                  type="button"
+                                  class="btn btn-sm btn-outline-primary"
+                                  on:click={() => addScheduleBlock()}
+                                >
+                                  {$_('areas.settings.setup.schedule.add', { default: 'Add block' })}
+                                </button>
+                              </td>
+                            </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+                {/if}
+            </div>
             {#if $formData.setup?.low?.tweaks ?? false}
               <div class="row">
                 <div class="col-12">

@@ -40,7 +40,8 @@ class terrariumRelayDimmerLeddyTube(terrariumRelayDimmer):
         """Führt den gpioset-Befehl aus."""
         wert = "0" if einschalten else "1"
         try:
-            subprocess.run(["gpioset", "0", f"{self.gpio_pin}={wert}"], check=True)
+            #subprocess.run(["gpioset", "0", f"{self.gpio_pin}={wert}"], check=True)
+            subprocess.run(["pinctrl", "set", str(self.gpio_pin), "op", "dh" if wert == "1" else "dl"], check=True)
             return True
         except subprocess.SubprocessError as e:
             logger.error("LeddyTubeDimmerRelais gpioset Fehler: %s", str(e))

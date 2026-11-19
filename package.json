@@ -23,6 +23,7 @@
     "autoprefixer": "^10.5.0",
     "cross-env-file": "^1.0.0",
     "cssnano": "^7.1.9",
+    "esbuild": "^0.28.2",
     "leaflet": "^1.9.4",
     "postcss": "^8.5.15",
     "postcss-import": "^16.1.1",
